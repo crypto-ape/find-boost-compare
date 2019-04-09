@@ -160,6 +160,9 @@
 # If Boost_DIR is set, this behaves as any find_package call would. If not,
 # it looks at BOOST_ROOT and BOOSTROOT to find Boost.
 #
+
+message(STATUS "Using custom FindBoost.cmake")
+
 if (NOT Boost_NO_BOOST_CMAKE)
   # If Boost_DIR is not set, look for BOOSTROOT and BOOST_ROOT as alternatives,
   # since these are more conventional for Boost.
@@ -349,6 +352,8 @@ function(_Boost_GUESS_COMPILER_PREFIX _ret)
     else()
       set (_boost_COMPILER "-il")
     endif()
+  elseif (MSVC12)
+    set(_boost_COMPILER "-vc120")
   elseif (MSVC11)
     set(_boost_COMPILER "-vc110")
   elseif (MSVC10)
@@ -407,6 +412,22 @@ function(_Boost_GUESS_COMPILER_PREFIX _ret)
     set(_boost_COMPILER "")
   endif()
   set(${_ret} ${_boost_COMPILER} PARENT_SCOPE)
+endfunction()
+
+function(_Boost_consider_adding_pthreads _outvar)
+  # On Unix platforms (excluding cygwin) add pthreads to Boost_LIBRARIES
+  # if the user is searching for the boost-thread component.
+  if(UNIX AND NOT CYGWIN)
+    list(FIND Boost_FIND_COMPONENTS thread _using_boost_thread)
+    if(_using_boost_thread GREATER -1)
+      find_library(BOOST_THREAD_LIBRARY NAMES pthread
+                   DOC "The threading library used by boost-thread"
+      )
+      if(BOOST_THREAD_LIBRARY)
+        set(${_outvar} ${ARGN} ${BOOST_THREAD_LIBRARY} PARENT_SCOPE)
+      endif()
+    endif()
+  endif()
 endfunction()
 
 #
@@ -823,6 +844,7 @@ else()
   list(APPEND _boost_LIBRARY_SEARCH_DIRS
     ${Boost_INCLUDE_DIR}/lib
     ${Boost_INCLUDE_DIR}/../lib
+    ${Boost_INCLUDE_DIR}/../lib/${CMAKE_LIBRARY_ARCHITECTURE}
     ${Boost_INCLUDE_DIR}/stage/lib
     )
   if( Boost_NO_SYSTEM_PATHS )
@@ -1099,6 +1121,9 @@ if(Boost_FOUND)
       list(APPEND Boost_LIBRARIES ${Boost_${UPPERCOMPONENT}_LIBRARY})
     endif()
   endforeach()
+
+  # Add pthread library on UNIX if thread component was found
+  _Boost_consider_adding_pthreads(Boost_LIBRARIES ${Boost_LIBRARIES})
 else()
   if(Boost_FIND_REQUIRED)
     message(SEND_ERROR "Unable to find the requested Boost libraries.\n${Boost_ERROR_REASON}")
